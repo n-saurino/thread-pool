@@ -58,7 +58,7 @@ namespace dp {
                                     try {
                                         unassigned_tasks_.fetch_sub(1, std::memory_order_release);
                                         std::invoke(std::move(task.value()));
-                                        completed_tasks_.fetch_sub(1, std::memory_order_release);
+                                        in_flight_tasks_.fetch_sub(1, std::memory_order_release);
                                     } catch (...) {
                                     }
                                 }
@@ -70,7 +70,7 @@ namespace dp {
                                         // steal a task
                                         unassigned_tasks_.fetch_sub(1, std::memory_order_release);
                                         std::invoke(std::move(task.value()));
-                                        completed_tasks_.fetch_sub(1, std::memory_order_release);
+                                        in_flight_tasks_.fetch_sub(1, std::memory_order_release);
                                         // stop stealing once we have invoked a stolen task
                                         break;
                                     }
@@ -82,8 +82,10 @@ namespace dp {
                             priority_queue_.rotate_to_front(id);
                             // check if all tasks are completed and release the barrier (binary
                             // semaphore)
-                            if (completed_tasks_.load(std::memory_order_acquire) == 0) {
-                                threads_done_.release();
+                            if (in_flight_tasks_.load(std::memory_order_acquire) == 0) {
+                                // threads_done_.release();
+                                threads_complete_signal_ = true;
+                                threads_complete_signal_.notify_one();
                             }
 
                         } while (!stop_tok.stop_requested());
@@ -214,10 +216,17 @@ namespace dp {
          * @brief Wait for all tasks to finish.
          * @details This function will block until all tasks have been completed.
          */
+        // void wait_for_tasks() {
+        //     if (in_flight_tasks_.load(std::memory_order_acquire) > 0) {
+        //         // wait for all tasks to finish
+        //         threads_done_.acquire();
+        //     }
+        // }
+
         void wait_for_tasks() {
-            if (completed_tasks_.load(std::memory_order_acquire) > 0) {
+            if (in_flight_tasks_.load(std::memory_order_acquire) > 0) {
                 // wait for all tasks to finish
-                threads_done_.acquire();
+                threads_complete_signal_.wait(false);
             }
         }
 
@@ -231,7 +240,7 @@ namespace dp {
             }
             auto i = *(i_opt);
             unassigned_tasks_.fetch_add(1, std::memory_order_relaxed);
-            completed_tasks_.fetch_add(1, std::memory_order_relaxed);
+            in_flight_tasks_.fetch_add(1, std::memory_order_relaxed);
             tasks_[i].tasks.push_back(std::forward<Function>(f));
             tasks_[i].signal.release();
         }
@@ -244,8 +253,9 @@ namespace dp {
         std::vector<ThreadType> threads_;
         std::deque<task_item> tasks_;
         dp::thread_safe_queue<std::size_t> priority_queue_;
-        std::atomic_int_fast64_t unassigned_tasks_{}, completed_tasks_{};
-        std::binary_semaphore threads_done_{0};
+        std::atomic_int_fast64_t unassigned_tasks_{}, in_flight_tasks_{};
+        // std::binary_semaphore threads_done_{0};
+        std::atomic_bool threads_complete_signal_{false};
     };
 
     /**
