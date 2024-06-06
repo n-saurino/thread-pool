@@ -134,6 +134,17 @@ namespace dp {
                   typename ReturnType = std::invoke_result_t<Function &&, Args &&...>>
             requires std::invocable<Function, Args...>
         [[nodiscard]] std::future<ReturnType> enqueue(Function f, Args... args) {
+            // Nigel
+            // Default priority is 0
+            return enqueue_with_priority(std::forward<Function>(f), 0, std::forward<Args>(args)...);
+        }
+
+        // Nigel 
+        // need to add an enqueue_with_priority function that enqueue will call
+        template <typename Function, typename... Args,
+                  typename ReturnType = std::invoke_result_t<Function &&, Args &&...>>
+            requires std::invocable<Function, Args...>
+        [[nodiscard]] std::future<ReturnType> enqueue_with_priority(Function f, int priority, Args... args) {
 #ifdef __cpp_lib_move_only_function
             // we can do this in C++23 because we now have support for move only functions
             std::promise<ReturnType> promise;
@@ -187,6 +198,8 @@ namespace dp {
             return future;
 #endif
         }
+
+
 
         /**
          * @brief Enqueue a task to be executed in the thread pool that returns void.
@@ -248,6 +261,16 @@ namespace dp {
         struct task_item {
             dp::thread_safe_queue<FunctionType> tasks{};
             std::binary_semaphore signal{0};
+            
+            // Nigel
+            // integer to maintain task priority
+            int priority;
+
+            // priority comparator
+            bool operator<(const task_item& other) const{
+                return priority < other.priority;
+            }
+
         };
 
         std::vector<ThreadType> threads_;

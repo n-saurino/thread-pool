@@ -29,6 +29,20 @@ namespace dp {
 
         thread_safe_queue() = default;
 
+        // Nigel
+        // we could use a priority_queue (max heap) instead of a deque
+        // or we could make insertions costly
+        void enqueue(T&& value) {
+            std::scoped_lock lock(mutex_);
+            // need to iterate through the deque and find the position to insert new task
+            auto it = data_.begin();
+            while(it != data_.end() && it->priority <= value.priority){
+                it++;
+            }
+
+            data_.insert(it, forward<T>(value));
+        }
+
         void push_back(T&& value) {
             std::scoped_lock lock(mutex_);
             data_.push_back(std::forward<T>(value));
