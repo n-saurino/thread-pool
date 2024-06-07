@@ -246,6 +246,8 @@ namespace dp {
       private:
         template <typename Function>
         void enqueue_task(Function &&f) {
+            // Nigel
+            // why do we need to copy the front and move it to the back?
             auto i_opt = priority_queue_.copy_front_and_rotate_to_back();
             if (!i_opt.has_value()) {
                 // would only be a problem if there are zero threads
@@ -254,7 +256,9 @@ namespace dp {
             auto i = *(i_opt);
             unassigned_tasks_.fetch_add(1, std::memory_order_relaxed);
             in_flight_tasks_.fetch_add(1, std::memory_order_relaxed);
-            tasks_[i].tasks.push_back(std::forward<Function>(f));
+            // Nigel
+            // tasks_[i].tasks.push_back(std::forward<Function>(f));
+            tasks_[i].tasks.enqueue(std::forward<Function>(f));
             tasks_[i].signal.release();
         }
 
